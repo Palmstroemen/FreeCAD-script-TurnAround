@@ -1,0 +1,237 @@
+# TurnAround
+#
+# This script can serve as a real time-saver if a short-cut is assigned to it.
+# It rotates the view by 'Degrees' (around the Z-axis) thus 
+# after 'Rotations' more rotations it will be in its original position again.
+#
+Rotations = 2
+Degrees  = 360/Rotations
+Debug = False			# shows the Elements in the tree that will be excluded from hiding.
+
+
+# Turns the view by 'degrees'.
+cam = Gui.ActiveDocument.ActiveView.getCameraOrientation()
+YPR = cam.getYawPitchRoll()
+Y = YPR[0]
+P = YPR[1]
+R = YPR[2]
+if (R<30) or (R>150):
+	R += Degrees
+else:
+	Y += Degrees
+cam.setYawPitchRoll(Y,P,R)
+Gui.ActiveDocument.ActiveView.setCameraOrientation(cam, True)
+
+#-------------------------------------------------------------------------------------------
+# Wait a moment after rotation to hide and show elements.
+from PySide import QtCore
+timer = QtCore.QTimer()
+timeout_duration = 800 # 500 milliseconds = 1/2 second
+timer.setInterval(timeout_duration)
+
+# your code before the animation and to get it started goes here
+
+timer.start()
+#-------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+def initCounter():
+	# in case no counter value is defined, creats one.
+	# in case it exists (what should not happen) simply sets it.
+
+	doc = App.ActiveDocument
+	if not hasattr(doc, "TurnAround"):
+		obj = doc.addObject("App::FeaturePython","TurnAround")
+		Gui.ActiveDocument.TurnAround.ShowInTree = True
+	else:
+		obj = doc.TurnAround
+
+	# Adds a user defined Property to the Base-Objekt
+	if not hasattr(obj, "Counter"):
+		obj.addProperty("App::PropertyInteger","Counter")
+
+	# Saves the initial value
+	obj.Counter = Rotations
+
+
+def getCounter():
+	# reads out the counter-Value and returns it.
+	# in case no counter value is defined, returns -1
+	doc = App.ActiveDocument
+	if hasattr(doc, "TurnAround"):
+		obj = doc.TurnAround
+	else:
+		return -1
+
+	if hasattr(obj, "Counter"):
+		obj.Counter -= 1
+
+		if obj.Counter == 0:
+			obj.removeProperty("Counter")
+			return 0
+		else:
+			return obj.Counter
+
+	else:
+		return 0
+
+
+def findParentOf(selection):
+	# searches the direct 'parents' of the object
+	obj = selection
+	parents = set()
+	if hasattr(obj, 'InList'):
+		# print("   found in List:")
+		for parent in obj.InList:
+			# for whatever reason Binders also can be found in this list so we have to exclude these
+			if parent.Name.find("Binder"):		# if 'Binder' is found within the name and it's on position 0 we get 0 which results in False
+				# print("    ",parent.Name)
+				parents.add(parent)
+	# print("   ------")
+	return parents
+
+
+def findAllParentsOf(Selection):
+	# searches for all subsequent 'parents' in the selection that might consist of several elements.
+
+	
+	selected_objects = set()		# in a set() each value can only exist once. Avoids double entries.
+	for sel in Selection:
+	    selected_objects.add(sel.Object)
+
+	parents = set()
+	for sel in selected_objects:
+		# print()
+		# print("find_all_parents_of(", sel.Name,"):")
+		parent = {sel}						
+		sc = 0
+		while parent.__len__() and (sc < 10):	
+			sc += 1
+			for p in parent:
+				parent = findParentOf(p)
+				parents.add(p)
+
+	# print("found:",parent)
+	# print("----------------------")
+	return parents
+
+
+def hideNonSelectedObjects():
+	# findes all currently not selected CURRENTLY VISIBLE parts, stores this list of parts and hides them.
+	# for this also all the parent elements of the selection need to be found and not been hidden.
+
+	# find all visible objects
+	visible_objects = []
+	for obj in FreeCAD.ActiveDocument.Objects:
+	    if obj.ViewObject.Visibility:
+	        visible_objects.append(obj)
+
+	# creates a list of the selected parts and their parents
+	Selection = Gui.Selection.getSelectionEx()
+	selected_and_parents = findAllParentsOf(Selection)
+
+	if Debug:
+		# in Debug-Mode don't hide the untouched objects but show the parents instead to check if
+		# if the parents-finder works well.
+		# print()
+		# print("Selection:")
+		# print(selected_and_parents)
+		# print()
+		for obj in selected_and_parents:
+			Gui.Selection.addSelection(obj)
+	
+	else:
+
+		# Removes the selected_objects including the parents from the list of visible-objects
+		hidden_objects = [obj for obj in visible_objects if obj not in selected_and_parents]
+		hidden_objects.pop()		# to remove our own object
+		#print("Visible objects without Selection:")
+		#print(hidden_objects)
+		#print()
+		#print([obj.Label for obj in hidden_objects])
+
+
+		# Save the list of selected_objects to retrieve it in a later call of the script.
+		turn = App.ActiveDocument.TurnAround
+		if not hasattr(turn, "HiddenObjects"):
+			turn.addProperty("App::PropertyStringList","HiddenObjects")
+			turn.HiddenObjects = [obj.Name for obj in hidden_objects]
+
+		# Hide the non selected Objects
+		for obj in hidden_objects:
+			obj.Visibility = False
+	
+
+def showNonSelectedObjects():
+	# recovers the list of not selected parts that has been hidden, and shows them again.
+	print("Showing again")
+	if not Debug:
+		if hasattr(App.ActiveDocument, "TurnAround") and hasattr(App.ActiveDocument.TurnAround, "HiddenObjects"):
+			# Save the list of selected_objects to retrieve it in a later call of the script.
+			turnNames = App.ActiveDocument.TurnAround.HiddenObjects
+			
+			for name in turnNames:
+				hidden_obj = App.ActiveDocument.getObject(name)
+				hidden_obj.Visibility = True
+	App.ActiveDocument.removeObject("TurnAround")
+
+
+def hideAndShow():
+	# if any elements are selected, this function hides all other objects on the first turn.
+	# when after several turns the view rotates back to its original position it shows all hidden objects again.
+	# for this it uses a counter to determine the number of rotations to get back to the original position 
+	# (for a 180° rotation this is 2, for a 120° rotation this should be 3 and for a 90° rotation it should be 4)
+	# To remember the original visability status of the hidden objects this needs to be stored in an additional property of the object.
+	# This additional property needs to be removed again after the last turn when all temporarily hidden objects have been made visible again.
+
+	# This only takes place if there is a selection.
+
+	counter = -1
+	counter = getCounter()    # Counter
+
+	if Gui.Selection.getSelection():
+		if counter == -1:
+			initCounter()
+			getCounter()
+			# now we are on the first turn and want to hide all other objects.
+			print("# first turn, hide objects")
+			hideNonSelectedObjects()
+
+
+		elif counter > 0:
+			# here we are on the run. Objects should be hidden by now.
+			print("# turning")
+
+		else:
+			# when counter reaches 0 we have done a full turn and want to make the hidden objects reappear.
+			print("# last turn, show objects")
+			showNonSelectedObjects()
+
+	else:
+		# The Selection might have existed and got lost. In this case we also want to make all the hidden objects to reappear.
+		if (counter > -1) and (counter < Rotations-1):
+			while counter > 0:  # remove Counter by driving it to 0 where getCounter() will remove it.
+				counter = getCounter()
+			print("# lost selection, show objects")
+			showNonSelectedObjects()
+
+		else:
+			print("No Selection: If you select anything all other objects will be hidden for one whole turn.")
+			print("              After",Rotations-1,"more rotations the hidden objects will reappear again.")
+			print("              This makes it very easy to select things on the backside of objects.")
+
+def on_timeout():
+	timer.stop()
+	#" stuff to do after the timeout"
+	hideAndShow()
+
+# connect the timer's timeout signal to the on_timeout function
+timer.timeout.connect(on_timeout)
+
