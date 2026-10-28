@@ -25,63 +25,46 @@ def turnStates():
 	return App.TurnAroundStates
 
 
-def findParentOf(selection):
-	# searches the direct 'parents' of the object
-	obj = selection
+def findParentsOf(obj):
+	# finds all containers (Part, Body, Group ...) that hold the object, at any depth.
+	# obj.Parents only follows the containers, not dependencies like Binders or expressions.
 	parents = set()
-	if hasattr(obj, 'InList'):
-		# print("   found in List:")
-		for parent in obj.InList:
-			# for whatever reason Binders also can be found in this list so we have to exclude these
-			if parent.Name.find("Binder"):		# if 'Binder' is found within the name and it's on position 0 we get 0 which results in False
-				# print("    ",parent.Name)
+	for top, subname in obj.Parents:
+		parents.add(top)
+		for name in subname.split(".")[:-2]:	# 'Body.Box.' lists the containers below top, then the object itself
+			parent = top.Document.getObject(name)
+			if parent:
 				parents.add(parent)
-	# print("   ------")
 	return parents
 
 
-def findAllParentsOf(Selection):
-	# searches for all subsequent 'parents' in the selection that might consist of several elements.
-
-	
-	selected_objects = set()		# in a set() each value can only exist once. Avoids double entries.
-	for sel in Selection:
-	    selected_objects.add(sel.Object)
-
-	parents = set()
-	for sel in selected_objects:
-		# print()
-		# print("find_all_parents_of(", sel.Name,"):")
-		parent = {sel}						
-		sc = 0
-		while parent.__len__() and (sc < 10):	
-			sc += 1
-			for p in parent:
-				parent = findParentOf(p)
-				parents.add(p)
-
-	# print("found:",parent)
-	# print("----------------------")
-	return parents
+def findObjectsToKeep(doc, Selection):
+	# the selected objects, the containers holding them and the content of selected containers.
+	selected_objects = {sel.Object for sel in Selection}
+	keep = set(selected_objects)
+	for obj in selected_objects:
+		keep |= findParentsOf(obj)
+	for obj in doc.Objects:
+		if findParentsOf(obj) & selected_objects:
+			keep.add(obj)
+	return keep
 
 
 def hideNonSelectedObjects(doc):
-	# hides all currently visible objects that are neither selected nor parents of the selection
+	# hides all currently visible objects that are neither selected, nor containers of the selection, nor inside a selected container,
 	# and returns the names of the hidden objects.
 
-	# creates a list of the selected parts and their parents
-	Selection = Gui.Selection.getSelectionEx(doc.Name)
-	selected_and_parents = findAllParentsOf(Selection)
+	keep = findObjectsToKeep(doc, Gui.Selection.getSelectionEx(doc.Name))
 
 	if Debug:
-		# in Debug-Mode don't hide the untouched objects but show the parents instead to check if
+		# in Debug-Mode don't hide the untouched objects but select the kept objects instead to check
 		# if the parents-finder works well.
-		for obj in selected_and_parents:
+		for obj in keep:
 			Gui.Selection.addSelection(obj)
 		return []
 
 	hidden_objects = [obj for obj in doc.Objects
-		if obj.ViewObject and obj.ViewObject.Visibility and obj not in selected_and_parents]
+		if obj.ViewObject and obj.ViewObject.Visibility and obj not in keep]
 	for obj in hidden_objects:
 		obj.ViewObject.Visibility = False
 	return [obj.Name for obj in hidden_objects]

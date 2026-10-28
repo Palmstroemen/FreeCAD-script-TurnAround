@@ -43,6 +43,29 @@ def turnedBy(before, after):
 	return round(math.degrees((before.inverted() * after).Angle))
 
 
+# camera orientations as FreeCAD's standard views set them
+START_VIEWS = {
+	"isometric": App.Rotation(0.424708, 0.17592, 0.339851, 0.820473),
+	"front": App.Rotation(App.Vector(1, 0, 0), 90),
+	"right": App.Rotation(0.5, 0.5, 0.5, 0.5),
+	"top": App.Rotation(),
+	"tilted": App.Rotation(App.Vector(1, 0, 0), 60).multiply(App.Rotation(App.Vector(0, 0, 1), 25)),
+}
+AXES = {"X": App.Vector(1, 0, 0), "Y": App.Vector(0, 1, 0), "Z": App.Vector(0, 0, 1)}
+
+
+def mostVerticalAxis(cam):
+	# the model axis that appears most vertical on the screen
+	up = cam.multVec(App.Vector(0, 1, 0))
+	return max(AXES, key=lambda name: abs(AXES[name].dot(up)))
+
+
+def turnAxis(before, after):
+	# the model axis closest to the axis the view has been turned around
+	axis = after.multiply(before.inverted()).Axis
+	return max(AXES, key=lambda name: abs(AXES[name].dot(axis)))
+
+
 def makeDoc():
 	doc = App.newDocument("T")
 	part = doc.addObject("App::Part", "Part")
@@ -130,8 +153,24 @@ def test_no_selection():
 	App.closeDocument(doc.Name)
 
 
+def test_turn_axis():
+	doc = makeDoc()
+	view = Gui.ActiveDocument.ActiveView
+	for name, start in START_VIEWS.items():
+		# without a screen only an animated camera move arrives reliably
+		view.setCameraOrientation(start, True)
+		wait(1500)
+		before = camera()
+		runMacro()
+		after = camera()
+		check("axis %s: turned around the most vertical axis" % name,
+			turnAxis(before, after) == mostVerticalAxis(before),
+			"expected %s, turned around %s" % (mostVerticalAxis(before), turnAxis(before, after)))
+	App.closeDocument(doc.Name)
+
+
 try:
-	for test in (test_face_selected, test_container_selected, test_hidden_object_deleted,
+	for test in (test_turn_axis, test_face_selected, test_container_selected, test_hidden_object_deleted,
 	             test_selection_lost, test_no_selection):
 		try:
 			test()
