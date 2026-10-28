@@ -18,6 +18,7 @@
 #
 # Changelog:
 #   1.0.1 (2026-10-28): hidden members of a group stay hidden when the group is shown again.
+#                       The view turns around the selection and comes back exactly to where it was.
 #   1.0.0 (2026-10-28): first release. Keeps its state outside the document, keeps the containers
 #                       of the selection (Part, Body) and the content of selected containers visible.
 #                       Turns around the most vertical axis in every view, also in the top view.
@@ -45,12 +46,15 @@ Debug = False			# shows the Elements in the tree that will be excluded from hidi
 import FreeCAD as App
 import FreeCADGui as Gui
 from PySide import QtCore
+from pivy import coin	# needed for the camera node of the view
 
+TurnMs = 500			# duration of the turn of the view.
 DelayMs = 800			# waits for the turn of the view before hiding and showing elements.
 
 
 def turnStates():
-	# The state of a turn in progress (hidden objects and remaining turns) per document.
+	# The state of a turn in progress (hidden objects, remaining turns, turn center and the camera
+	# before the first turn) per document.
 	# It is kept in the FreeCAD module and not in the document, so the document stays
 	# unchanged and the state survives until the next run of the macro.
 	if not hasattr(App, "TurnAroundStates"):
@@ -118,7 +122,7 @@ def showNonSelectedObjects(doc, names):
 			obj.ViewObject.Visibility = before[obj.Name]
 
 
-def hideAndShow(docName):
+def hideAndShow(docName, center, camera):
 	# if any elements are selected, this function hides all other objects on the first turn.
 	# when after several turns the view rotates back to its original position it shows all hidden objects again.
 	# for this it counts the remaining turns to get back to the original position
@@ -134,7 +138,8 @@ def hideAndShow(docName):
 		if state is None:
 			# now we are on the first turn and want to hide all other objects.
 			print("# first turn, hide objects")
-			states[docName] = {"turns": Rotations - 1, "hidden": hideNonSelectedObjects(doc)}
+			states[docName] = {"turns": Rotations - 1, "hidden": hideNonSelectedObjects(doc),
+				"center": center, "camera": camera}
 
 		else:
 			state["turns"] -= 1
@@ -144,7 +149,10 @@ def hideAndShow(docName):
 			else:
 				# we have done a full turn and want to make the hidden objects reappear.
 				print("# last turn, show objects")
-				showNonSelectedObjects(doc, states.pop(docName)["hidden"])
+				state = states.pop(docName)
+				showNonSelectedObjects(doc, state["hidden"])
+				# back at the start: set the camera exactly as it was, without rounding errors
+				Gui.getDocument(docName).ActiveView.setCamera(state["camera"])
 
 	elif state is not None:
 		# The Selection got lost. In this case we also want to make all the hidden objects to reappear.
@@ -166,14 +174,60 @@ def mostVerticalAxis(cam):
 	return axis if axis.dot(up) > 0 else axis.negative()
 
 
+def turnCenter(docName, node):
+	# the center of the selection, so the selection stays in view.
+	# Without a selection the focal point of the camera, which a turn around it does not move.
+	box = App.BoundBox()
+	for sel in Gui.Selection.getSelectionEx(docName, 0):
+		for sub in sel.SubElementNames or [""]:
+			try:
+				shape = sel.Object.getSubObject(sub)
+			except Exception:
+				shape = None
+			if hasattr(shape, "BoundBox") and shape.BoundBox.isValid():
+				box.add(shape.BoundBox)
+	if box.isValid():
+		return box.Center
+	position = App.Vector(*node.position.getValue().getValue())
+	direction = App.Rotation(*node.orientation.getValue().getValue()).multVec(App.Vector(0, 0, -1))
+	return position + direction * node.focalDistance.getValue()
+
+
+def turnCamera(node, axis, degrees, center):
+	# turns the camera around 'center' in small steps. FreeCAD's setCameraOrientation turns
+	# around a rotation center of its own, so the view would not come back to where it was.
+	position = App.Vector(*node.position.getValue().getValue())
+	orientation = App.Rotation(*node.orientation.getValue().getValue())
+	steps = 20
+
+	def step(i):
+		t = i / steps
+		t = t * t * (3 - 2 * t)				# starts and ends smoothly
+		turn = App.Rotation(axis, degrees * t)
+		p = center + turn.multVec(position - center)
+		q = turn.multiply(orientation).Q
+		try:
+			node.position.setValue(p.x, p.y, p.z)
+			node.orientation.setValue(q[0], q[1], q[2], q[3])
+		except Exception:
+			return						# the view has been closed in the meantime
+		if i < steps:
+			QtCore.QTimer.singleShot(TurnMs // steps, lambda: step(i + 1))
+
+	step(1)
+
+
 # Turns the view by 'Degrees' around the axis that appears most vertical.
 if Gui.ActiveDocument is None:
 	print("TurnAround: please open a document first.")
 else:
-	cam = Gui.ActiveDocument.ActiveView.getCameraOrientation()
-	cam = App.Rotation(mostVerticalAxis(cam), Degrees).multiply(cam)
-	Gui.ActiveDocument.ActiveView.setCameraOrientation(cam, True)
+	view = Gui.ActiveDocument.ActiveView
+	docName = Gui.ActiveDocument.Document.Name
+	node = view.getCameraNode()
+	state = turnStates().get(docName)
+	center = state["center"] if state else turnCenter(docName, node)
+	camera = view.getCamera()			# kept by hideAndShow on the first turn
+	turnCamera(node, mostVerticalAxis(view.getCameraOrientation()), Degrees, center)
 
 	# Wait a moment after rotation to hide and show elements.
-	docName = Gui.ActiveDocument.Document.Name
-	QtCore.QTimer.singleShot(DelayMs, lambda: hideAndShow(docName))
+	QtCore.QTimer.singleShot(DelayMs, lambda: hideAndShow(docName, center, camera))

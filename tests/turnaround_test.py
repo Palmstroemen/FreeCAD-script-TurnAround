@@ -39,6 +39,14 @@ def camera():
 	return Gui.ActiveDocument.ActiveView.getCameraOrientation()
 
 
+def cameraPosition():
+	# the camera position from the Inventor description of the camera
+	for line in Gui.ActiveDocument.ActiveView.getCamera().splitlines():
+		parts = line.split()
+		if parts and parts[0] == "position":
+			return App.Vector(*map(float, parts[1:4]))
+
+
 def turnedBy(before, after):
 	return round(math.degrees((before.inverted() * after).Angle))
 
@@ -97,7 +105,10 @@ def check(name, condition, detail=""):
 
 def test_face_selected():
 	doc = makeDoc()
-	before, camBefore = visible(doc), camera()
+	# the selection lies off-center, so moving to the center of the visible objects would show
+	Gui.ActiveDocument.ActiveView.fitAll()
+	wait(500)
+	before, camBefore, posBefore = visible(doc), camera(), cameraPosition()
 	Gui.Selection.addSelection(doc.Name, "Part", "Body.Box.Face1")
 	runMacro()
 	shown = visible(doc)
@@ -108,6 +119,8 @@ def test_face_selected():
 	runMacro()
 	check("face: everything back after the second turn", visible(doc) == before, sorted(before ^ visible(doc)))
 	check("face: view back after the second turn", turnedBy(camBefore, camera()) == 0, turnedBy(camBefore, camera()))
+	check("face: camera back at its position after the second turn", (cameraPosition() - posBefore).Length < 0.01,
+		"moved by %.2f" % (cameraPosition() - posBefore).Length)
 	App.closeDocument(doc.Name)
 
 
