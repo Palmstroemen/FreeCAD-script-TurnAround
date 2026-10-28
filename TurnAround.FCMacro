@@ -19,6 +19,7 @@
 # Changelog:
 #   1.0.0 (2026-10-28): first release. Keeps its state outside the document, keeps the containers
 #                       of the selection (Part, Body) and the content of selected containers visible.
+#                       Turns around the most vertical axis in every view, also in the top view.
 
 __Name__ = 'TurnAround'
 __Comment__ = 'Turns the view to the backside and hides all non-selected objects until you turn back'
@@ -149,17 +150,21 @@ def hideAndShow(docName):
 		print("              This makes it very easy to select things on the backside of objects.")
 
 
-# Turns the view by 'Degrees'.
+def mostVerticalAxis(cam):
+	# finds the model axis (X, Y or Z) that appears most vertical on the screen,
+	# pointing upwards, so the turn has the same direction on the screen for every axis.
+	up = cam.multVec(App.Vector(0, 1, 0))		# the screen's up direction in model coordinates
+	axes = [App.Vector(1, 0, 0), App.Vector(0, 1, 0), App.Vector(0, 0, 1)]
+	axis = max(axes, key=lambda a: abs(a.dot(up)))
+	return axis if axis.dot(up) > 0 else axis.negative()
+
+
+# Turns the view by 'Degrees' around the axis that appears most vertical.
 if Gui.ActiveDocument is None:
 	print("TurnAround: please open a document first.")
 else:
 	cam = Gui.ActiveDocument.ActiveView.getCameraOrientation()
-	Y, P, R = cam.getYawPitchRoll()
-	if (R<30) or (R>150):
-		R += Degrees
-	else:
-		Y += Degrees
-	cam.setYawPitchRoll(Y,P,R)
+	cam = App.Rotation(mostVerticalAxis(cam), Degrees).multiply(cam)
 	Gui.ActiveDocument.ActiveView.setCameraOrientation(cam, True)
 
 	# Wait a moment after rotation to hide and show elements.
