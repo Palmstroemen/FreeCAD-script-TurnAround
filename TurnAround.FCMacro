@@ -1,9 +1,40 @@
 # TurnAround
 #
-# This script can serve as a real time-saver if a short-cut is assigned to it.
-# It rotates the view by 'Degrees' (around the Z-axis) thus 
-# after 'Rotations' more rotations it will be in its original position again.
+# Turns the view by 180 degrees around the axis that appears most vertical on the screen,
+# so you look at the backside of your model. If something is selected, all other objects
+# are hidden for the turn. The next run turns the view back and shows them again.
+# This makes it very easy to select faces, edges and points on the backside of a body.
 #
+# Usage:
+#   Select something (e.g. a face), run the macro, select on the backside,
+#   run the macro again. Without a selection the macro only turns the view.
+#   It is a real time-saver if you assign a shortcut to it
+#   (Tools -> Customize... -> Macros: choose TurnAround.FCMacro, enter a shortcut, Add).
+#
+# Settings:
+#   Rotations: number of runs for a full turn (2 = 180 degrees, 3 = 120 degrees, 4 = 90 degrees).
+#              The objects are hidden on the first run and shown again after the last one.
+#   Debug:     selects the objects that would stay visible instead of hiding the others.
+#
+# Changelog:
+#   1.0.0 (2026-10-28): first release. Keeps its state outside the document, keeps the containers
+#                       of the selection (Part, Body) and the content of selected containers visible.
+
+__Name__ = 'TurnAround'
+__Comment__ = 'Turns the view to the backside and hides all non-selected objects until you turn back'
+__Author__ = 'Palmstroemen'
+__Date__ = '2026-10-28'
+__Version__ = '1.0.0'
+__License__ = 'MIT'
+__Web__ = 'https://github.com/Palmstroemen/FreeCAD-script-TurnAround'
+__Wiki__ = ''
+__Icon__ = 'TurnAroundIcon.png'
+__Help__ = 'Select something, run the macro, select on the backside, run it again. Assign a shortcut to it.'
+__Status__ = 'Stable'
+__Requires__ = 'FreeCAD >= 0.21'
+__Communication__ = 'https://github.com/Palmstroemen/FreeCAD-script-TurnAround/issues'
+__Files__ = 'TurnAroundIcon.png'
+
 Rotations = 2
 Degrees  = 360/Rotations
 Debug = False			# shows the Elements in the tree that will be excluded from hiding.

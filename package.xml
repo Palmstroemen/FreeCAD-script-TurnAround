@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+
+  <name>TurnAround</name>
+
+  <description>Turns the view to the backside of your model and hides all non-selected objects until you turn back. Makes it easy to select faces, edges and points on the backside of a body.</description>
+
+  <version>1.0.0</version>
+
+  <date>2026-10-28</date>
+
+  <maintainer email="19696982+Palmstroemen@users.noreply.github.com">Palmstroemen</maintainer>
+
+  <license file="LICENSE">MIT</license>
+
+  <url branch="main" type="repository">https://github.com/Palmstroemen/FreeCAD-script-TurnAround.git</url>
+
+  <url type="bugtracker">https://github.com/Palmstroemen/FreeCAD-script-TurnAround/issues</url>
+
+  <url type="readme">https://github.com/Palmstroemen/FreeCAD-script-TurnAround/blob/main/README.md</url>
+
+  <icon>TurnAroundIcon.png</icon>
+
+  <content>
+    <macro>
+      <name>TurnAround</name>
+      <freecadmin>0.21.0</freecadmin>
+      <file>TurnAround.FCMacro</file>
+      <icon>TurnAroundIcon.png</icon>
+      <subdirectory>./</subdirectory>
+      <tag>view</tag>
+      <tag>selection</tag>
+      <tag>visibility</tag>
+    </macro>
+  </content>
+
+</package>
