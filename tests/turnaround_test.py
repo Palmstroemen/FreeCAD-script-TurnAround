@@ -77,7 +77,12 @@ def makeDoc():
 	binder = body2.newObject("PartDesign::ShapeBinder", "ShapeBinder")
 	binder.Support = [(box, "")]
 	doc.addObject("Part::Box", "Free")
+	# a group with a hidden member: showing a group again shows all its members
+	group = doc.addObject("App::DocumentObjectGroup", "Group")
+	group.addObject(doc.addObject("Part::Box", "GroupShown"))
+	group.addObject(doc.addObject("Part::Box", "GroupHidden"))
 	doc.recompute()
+	doc.getObject("GroupHidden").ViewObject.Visibility = False
 	Gui.Selection.clearSelection()
 	# without a screen, the very first animated camera move of a new view does not run
 	view = Gui.ActiveDocument.ActiveView

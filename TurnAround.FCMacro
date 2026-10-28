@@ -17,6 +17,7 @@
 #   Debug:     selects the objects that would stay visible instead of hiding the others.
 #
 # Changelog:
+#   1.0.1 (2026-10-28): hidden members of a group stay hidden when the group is shown again.
 #   1.0.0 (2026-10-28): first release. Keeps its state outside the document, keeps the containers
 #                       of the selection (Part, Body) and the content of selected containers visible.
 #                       Turns around the most vertical axis in every view, also in the top view.
@@ -25,7 +26,7 @@ __Name__ = 'TurnAround'
 __Comment__ = 'Turns the view to the backside and hides all non-selected objects until you turn back'
 __Author__ = 'Palmstroemen'
 __Date__ = '2026-10-28'
-__Version__ = '1.0.0'
+__Version__ = '1.0.1'
 __License__ = 'MIT'
 __Web__ = 'https://github.com/Palmstroemen/FreeCAD-script-TurnAround'
 __Wiki__ = ''
@@ -105,10 +106,16 @@ def hideNonSelectedObjects(doc):
 def showNonSelectedObjects(doc, names):
 	# shows the hidden objects again. Objects deleted in the meantime are skipped.
 	print("Showing again")
+	before = {obj.Name: obj.ViewObject.Visibility for obj in doc.Objects if obj.ViewObject}
 	for name in names:
 		obj = doc.getObject(name)
 		if obj and obj.ViewObject:
 			obj.ViewObject.Visibility = True
+
+	# showing a group shows all its members, also those that were hidden before. Hide them again.
+	for obj in doc.Objects:
+		if obj.ViewObject and obj.Name not in names and obj.ViewObject.Visibility != before.get(obj.Name):
+			obj.ViewObject.Visibility = before[obj.Name]
 
 
 def hideAndShow(docName):

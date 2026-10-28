@@ -5,7 +5,7 @@
 
   <description>Turns the view to the backside of your model and hides all non-selected objects until you turn back. Makes it easy to select faces, edges and points on the backside of a body.</description>
 
-  <version>1.0.0</version>
+  <version>1.0.1</version>
 
   <date>2026-10-28</date>
 
