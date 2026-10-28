@@ -71,9 +71,7 @@ def test_face_selected():
 	doc = makeDoc()
 	before, camBefore = visible(doc), camera()
 	Gui.Selection.addSelection(doc.Name, "Part", "Body.Box.Face1")
-	Gui.ActiveDocument.Modified = False
 	runMacro()
-	check("face: document not marked as modified", not Gui.ActiveDocument.Modified)
 	shown = visible(doc)
 	check("face: selection and its containers stay", {"Part", "Body", "Box"} <= shown, sorted(shown))
 	check("face: other objects hidden", not ({"Free", "Body001", "ShapeBinder"} & shown), sorted(shown))

@@ -9,78 +9,20 @@ Degrees  = 360/Rotations
 Debug = False			# shows the Elements in the tree that will be excluded from hiding.
 
 
-# Turns the view by 'degrees'.
-cam = Gui.ActiveDocument.ActiveView.getCameraOrientation()
-YPR = cam.getYawPitchRoll()
-Y = YPR[0]
-P = YPR[1]
-R = YPR[2]
-if (R<30) or (R>150):
-	R += Degrees
-else:
-	Y += Degrees
-cam.setYawPitchRoll(Y,P,R)
-Gui.ActiveDocument.ActiveView.setCameraOrientation(cam, True)
-
-#-------------------------------------------------------------------------------------------
-# Wait a moment after rotation to hide and show elements.
+import FreeCAD as App
+import FreeCADGui as Gui
 from PySide import QtCore
-timer = QtCore.QTimer()
-timeout_duration = 800 # 500 milliseconds = 1/2 second
-timer.setInterval(timeout_duration)
 
-# your code before the animation and to get it started goes here
-
-timer.start()
-#-------------------------------------------------------------------------------------------
+DelayMs = 800			# waits for the turn of the view before hiding and showing elements.
 
 
-
-
-
-
-
-
-
-def initCounter():
-	# in case no counter value is defined, creats one.
-	# in case it exists (what should not happen) simply sets it.
-
-	doc = App.ActiveDocument
-	if not hasattr(doc, "TurnAround"):
-		obj = doc.addObject("App::FeaturePython","TurnAround")
-		Gui.ActiveDocument.TurnAround.ShowInTree = True
-	else:
-		obj = doc.TurnAround
-
-	# Adds a user defined Property to the Base-Objekt
-	if not hasattr(obj, "Counter"):
-		obj.addProperty("App::PropertyInteger","Counter")
-
-	# Saves the initial value
-	obj.Counter = Rotations
-
-
-def getCounter():
-	# reads out the counter-Value and returns it.
-	# in case no counter value is defined, returns -1
-	doc = App.ActiveDocument
-	if hasattr(doc, "TurnAround"):
-		obj = doc.TurnAround
-	else:
-		return -1
-
-	if hasattr(obj, "Counter"):
-		obj.Counter -= 1
-
-		if obj.Counter == 0:
-			obj.removeProperty("Counter")
-			return 0
-		else:
-			return obj.Counter
-
-	else:
-		return 0
+def turnStates():
+	# The state of a turn in progress (hidden objects and remaining turns) per document.
+	# It is kept in the FreeCAD module and not in the document, so the document stays
+	# unchanged and the state survives until the next run of the macro.
+	if not hasattr(App, "TurnAroundStates"):
+		App.TurnAroundStates = {}
+	return App.TurnAroundStates
 
 
 def findParentOf(selection):
@@ -123,115 +65,89 @@ def findAllParentsOf(Selection):
 	return parents
 
 
-def hideNonSelectedObjects():
-	# findes all currently not selected CURRENTLY VISIBLE parts, stores this list of parts and hides them.
-	# for this also all the parent elements of the selection need to be found and not been hidden.
-
-	# find all visible objects
-	visible_objects = []
-	for obj in FreeCAD.ActiveDocument.Objects:
-	    if obj.ViewObject.Visibility:
-	        visible_objects.append(obj)
+def hideNonSelectedObjects(doc):
+	# hides all currently visible objects that are neither selected nor parents of the selection
+	# and returns the names of the hidden objects.
 
 	# creates a list of the selected parts and their parents
-	Selection = Gui.Selection.getSelectionEx()
+	Selection = Gui.Selection.getSelectionEx(doc.Name)
 	selected_and_parents = findAllParentsOf(Selection)
 
 	if Debug:
 		# in Debug-Mode don't hide the untouched objects but show the parents instead to check if
 		# if the parents-finder works well.
-		# print()
-		# print("Selection:")
-		# print(selected_and_parents)
-		# print()
 		for obj in selected_and_parents:
 			Gui.Selection.addSelection(obj)
-	
-	else:
+		return []
 
-		# Removes the selected_objects including the parents from the list of visible-objects
-		hidden_objects = [obj for obj in visible_objects if obj not in selected_and_parents]
-		hidden_objects.pop()		# to remove our own object
-		#print("Visible objects without Selection:")
-		#print(hidden_objects)
-		#print()
-		#print([obj.Label for obj in hidden_objects])
+	hidden_objects = [obj for obj in doc.Objects
+		if obj.ViewObject and obj.ViewObject.Visibility and obj not in selected_and_parents]
+	for obj in hidden_objects:
+		obj.ViewObject.Visibility = False
+	return [obj.Name for obj in hidden_objects]
 
 
-		# Save the list of selected_objects to retrieve it in a later call of the script.
-		turn = App.ActiveDocument.TurnAround
-		if not hasattr(turn, "HiddenObjects"):
-			turn.addProperty("App::PropertyStringList","HiddenObjects")
-			turn.HiddenObjects = [obj.Name for obj in hidden_objects]
-
-		# Hide the non selected Objects
-		for obj in hidden_objects:
-			obj.Visibility = False
-	
-
-def showNonSelectedObjects():
-	# recovers the list of not selected parts that has been hidden, and shows them again.
+def showNonSelectedObjects(doc, names):
+	# shows the hidden objects again. Objects deleted in the meantime are skipped.
 	print("Showing again")
-	if not Debug:
-		if hasattr(App.ActiveDocument, "TurnAround") and hasattr(App.ActiveDocument.TurnAround, "HiddenObjects"):
-			# Save the list of selected_objects to retrieve it in a later call of the script.
-			turnNames = App.ActiveDocument.TurnAround.HiddenObjects
-			
-			for name in turnNames:
-				hidden_obj = App.ActiveDocument.getObject(name)
-				hidden_obj.Visibility = True
-	App.ActiveDocument.removeObject("TurnAround")
+	for name in names:
+		obj = doc.getObject(name)
+		if obj and obj.ViewObject:
+			obj.ViewObject.Visibility = True
 
 
-def hideAndShow():
+def hideAndShow(docName):
 	# if any elements are selected, this function hides all other objects on the first turn.
 	# when after several turns the view rotates back to its original position it shows all hidden objects again.
-	# for this it uses a counter to determine the number of rotations to get back to the original position 
+	# for this it counts the remaining turns to get back to the original position
 	# (for a 180° rotation this is 2, for a 120° rotation this should be 3 and for a 90° rotation it should be 4)
-	# To remember the original visability status of the hidden objects this needs to be stored in an additional property of the object.
-	# This additional property needs to be removed again after the last turn when all temporarily hidden objects have been made visible again.
 
-	# This only takes place if there is a selection.
+	if docName not in App.listDocuments():
+		return							# the document has been closed in the meantime
+	doc = App.getDocument(docName)
+	states = turnStates()
+	state = states.get(docName)
 
-	counter = -1
-	counter = getCounter()    # Counter
-
-	if Gui.Selection.getSelection():
-		if counter == -1:
-			initCounter()
-			getCounter()
+	if Gui.Selection.getSelection(docName):
+		if state is None:
 			# now we are on the first turn and want to hide all other objects.
 			print("# first turn, hide objects")
-			hideNonSelectedObjects()
-
-
-		elif counter > 0:
-			# here we are on the run. Objects should be hidden by now.
-			print("# turning")
+			states[docName] = {"turns": Rotations - 1, "hidden": hideNonSelectedObjects(doc)}
 
 		else:
-			# when counter reaches 0 we have done a full turn and want to make the hidden objects reappear.
-			print("# last turn, show objects")
-			showNonSelectedObjects()
+			state["turns"] -= 1
+			if state["turns"] > 0:
+				# here we are on the run. Objects should be hidden by now.
+				print("# turning")
+			else:
+				# we have done a full turn and want to make the hidden objects reappear.
+				print("# last turn, show objects")
+				showNonSelectedObjects(doc, states.pop(docName)["hidden"])
+
+	elif state is not None:
+		# The Selection got lost. In this case we also want to make all the hidden objects to reappear.
+		print("# lost selection, show objects")
+		showNonSelectedObjects(doc, states.pop(docName)["hidden"])
 
 	else:
-		# The Selection might have existed and got lost. In this case we also want to make all the hidden objects to reappear.
-		if (counter > -1) and (counter < Rotations-1):
-			while counter > 0:  # remove Counter by driving it to 0 where getCounter() will remove it.
-				counter = getCounter()
-			print("# lost selection, show objects")
-			showNonSelectedObjects()
+		print("No Selection: If you select anything all other objects will be hidden for one whole turn.")
+		print("              After",Rotations-1,"more rotations the hidden objects will reappear again.")
+		print("              This makes it very easy to select things on the backside of objects.")
 
-		else:
-			print("No Selection: If you select anything all other objects will be hidden for one whole turn.")
-			print("              After",Rotations-1,"more rotations the hidden objects will reappear again.")
-			print("              This makes it very easy to select things on the backside of objects.")
 
-def on_timeout():
-	timer.stop()
-	#" stuff to do after the timeout"
-	hideAndShow()
+# Turns the view by 'Degrees'.
+if Gui.ActiveDocument is None:
+	print("TurnAround: please open a document first.")
+else:
+	cam = Gui.ActiveDocument.ActiveView.getCameraOrientation()
+	Y, P, R = cam.getYawPitchRoll()
+	if (R<30) or (R>150):
+		R += Degrees
+	else:
+		Y += Degrees
+	cam.setYawPitchRoll(Y,P,R)
+	Gui.ActiveDocument.ActiveView.setCameraOrientation(cam, True)
 
-# connect the timer's timeout signal to the on_timeout function
-timer.timeout.connect(on_timeout)
-
+	# Wait a moment after rotation to hide and show elements.
+	docName = Gui.ActiveDocument.Document.Name
+	QtCore.QTimer.singleShot(DelayMs, lambda: hideAndShow(docName))
