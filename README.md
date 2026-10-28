@@ -4,6 +4,10 @@ A macro for FreeCAD that turns the view to the backside of your model and hides 
 
 This makes it easy to select faces, edges and points on the backside of a body, without other parts getting in the way.
 
+![TurnAround selecting a 4th point on the backside of the excavator from FreeCAD's AssemblyExample](docs/TurnAround_demo.gif)
+
+*The demo uses the excavator from FreeCAD's AssemblyExample, with a magenta selection color and larger points for visibility.*
+
 ## How to use it
 1. Select something, e.g. a face of a body.
 2. Run TurnAround. The view turns by 180 degrees and all other objects disappear.
